@@ -78,16 +78,20 @@
                     <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 1.5rem;">
                         您的信件已放入匿名信箱。請務必**妥善保存下方 6 位數提取碼**，日後可憑此提取碼查詢社團管理員的回覆。
                     </p>
-                    <div class="code-box" style="max-width: 320px; margin: 1.5rem auto;">
-                        <span class="code-text" id="generated-code">123456</span>
-                        <button class="btn-copy" id="btn-copy-code" onclick="copyCode()">複製</button>
-                    </div>
                 </div>
 
                 <div id="success-public-msg" style="display: none;">
-                    <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 1.5rem;">
-                        您的信件已公開發布！所有人皆可在 **「公開信件板」** 分頁直接點閱該信件內容，並查看社團幹部們的回覆。
+                    <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 1rem;">
+                        您的信件已成功發布至 **「公開信件板」**，所有人均可點閱。
                     </p>
+                    <p style="color: #a78bfa; max-width: 500px; margin: 0 auto 1.5rem; font-size: 0.95rem; font-weight: 500;">
+                        💡 提示：雖然是公開投稿，您依然可以複製並保存下方的 **6 位數提取碼**。日後在「查詢回覆」分頁輸入它，即可單獨向幹部進行後續的補充說明或對話！
+                    </p>
+                </div>
+
+                <div class="code-box" style="max-width: 320px; margin: 1.5rem auto;">
+                    <span class="code-text" id="generated-code">123456</span>
+                    <button class="btn-copy" id="btn-copy-code" onclick="copyCode()">複製</button>
                 </div>
                 
                 <button class="btn-submit" style="width: auto; padding: 0.8rem 2rem; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-border); margin-top: 1rem;" onclick="resetSubmitForm()">

@@ -75,13 +75,13 @@ async function handleLetterSubmit(event) {
             document.getElementById('submit-form').style.display = 'none';
             document.getElementById('submit-success-card').style.display = 'block';
             
+            document.getElementById('generated-code').textContent = data.code;
             if (is_public) {
                 document.getElementById('success-private-msg').style.display = 'none';
                 document.getElementById('success-public-msg').style.display = 'block';
             } else {
                 document.getElementById('success-private-msg').style.display = 'block';
                 document.getElementById('success-public-msg').style.display = 'none';
-                document.getElementById('generated-code').textContent = data.code;
             }
             showToast('匿名信件已成功送出！');
         } else {
