@@ -2,76 +2,65 @@ import os
 import sys
 import random
 import string
-import sqlite3
+import psycopg2
+import psycopg2.extras
+import psycopg2.extensions
 import threading
-import smtplib
 import urllib.request
 import urllib.parse
-from email.mime.text import MIMEText
-from email.header import Header
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
+from contextlib import contextmanager
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
-DATABASE = os.environ.get('DATABASE_PATH', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'database.db'))
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
+# Custom connection class that defaults cursors to DictCursor
+class DictConnection(psycopg2.extensions.connection):
+    def cursor(self, *args, **kwargs):
+        kwargs.setdefault('cursor_factory', psycopg2.extras.DictCursor)
+        return super(DictConnection, self).cursor(*args, **kwargs)
+
+@contextmanager
 def get_db():
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if not DATABASE_URL:
+        raise ValueError("DATABASE_URL environment variable is not set!")
+    conn = psycopg2.connect(DATABASE_URL, connection_factory=DictConnection)
+    try:
+        yield conn
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        conn.close()
 
 def init_db():
-    db_dir = os.path.dirname(DATABASE)
-    if db_dir and not os.path.exists(db_dir):
-        os.makedirs(db_dir, exist_ok=True)
+    # Only run DB init if DATABASE_URL is set (allows building/compiling on environments without DATABASE_URL)
+    if not DATABASE_URL:
+        print("DATABASE_URL is not set. Skipping DB initialization.", file=sys.stderr, flush=True)
+        return
+        
     with get_db() as conn:
         cursor = conn.cursor()
         
-        # Migration check: if old database exists without admin_profile_id in replies table
-        try:
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='replies'")
-            if cursor.fetchone():
-                cursor.execute("PRAGMA table_info(replies)")
-                columns = [row['name'] for row in cursor.fetchall()]
-                if columns and 'admin_profile_id' not in columns:
-                    cursor.execute("DROP TABLE IF EXISTS read_statuses")
-                    cursor.execute("DROP TABLE IF EXISTS replies")
-                    cursor.execute("DROP TABLE IF EXISTS admin_profiles")
-                    cursor.execute("DROP TABLE IF EXISTS admins")
-                    cursor.execute("DROP TABLE IF EXISTS letters")
-                    conn.commit()
-        except Exception as e:
-            print("Migration check failed:", e, file=sys.stderr, flush=True)
-
-        # Migration check 2: if letters table exists but doesn't have is_public column
-        try:
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='letters'")
-            if cursor.fetchone():
-                cursor.execute("PRAGMA table_info(letters)")
-                columns = [row['name'] for row in cursor.fetchall()]
-                if columns and 'is_public' not in columns:
-                    cursor.execute("ALTER TABLE letters ADD COLUMN is_public INTEGER DEFAULT 0")
-                    conn.commit()
-        except Exception as e:
-            print("Migration of letters table for is_public failed:", e, file=sys.stderr, flush=True)
-
         # Create admins table (handles login credentials only)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS admins (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL
             )
         ''')
         
         # Create admin_profiles table (handles multiple identity display names under one admin)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS admin_profiles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 admin_id INTEGER NOT NULL,
-                display_name TEXT NOT NULL,
+                display_name VARCHAR(255) NOT NULL,
                 FOREIGN KEY (admin_id) REFERENCES admins (id) ON DELETE CASCADE
             )
         ''')
@@ -79,25 +68,25 @@ def init_db():
         # Create letters table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS letters (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                code TEXT UNIQUE NOT NULL,
-                title TEXT DEFAULT '匿名信件',
-                category TEXT DEFAULT '一般',
+                id SERIAL PRIMARY KEY,
+                code VARCHAR(50) UNIQUE NOT NULL,
+                title VARCHAR(255) DEFAULT '匿名信件',
+                category VARCHAR(100) DEFAULT '一般',
                 content TEXT NOT NULL,
                 is_archived INTEGER DEFAULT 0,
                 is_public INTEGER DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         
         # Create replies table (admin_profile_id is Nullable to support anonymous sender replies)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS replies (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id SERIAL PRIMARY KEY,
                 letter_id INTEGER NOT NULL,
                 admin_profile_id INTEGER,
                 content TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (letter_id) REFERENCES letters (id) ON DELETE CASCADE,
                 FOREIGN KEY (admin_profile_id) REFERENCES admin_profiles (id) ON DELETE CASCADE
             )
@@ -108,7 +97,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS read_statuses (
                 admin_id INTEGER NOT NULL,
                 letter_id INTEGER NOT NULL,
-                read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                read_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 PRIMARY KEY (admin_id, letter_id),
                 FOREIGN KEY (admin_id) REFERENCES admins (id) ON DELETE CASCADE,
                 FOREIGN KEY (letter_id) REFERENCES letters (id) ON DELETE CASCADE
@@ -125,18 +114,18 @@ def init_db():
         ]
         
         for officer in default_officers:
-            cursor.execute('SELECT id FROM admins WHERE username = ?', (officer['username'],))
+            cursor.execute('SELECT id FROM admins WHERE username = %s', (officer['username'],))
             row = cursor.fetchone()
             if not row:
                 pwd_hash = generate_password_hash(officer['password'])
                 cursor.execute(
-                    'INSERT INTO admins (username, password_hash) VALUES (?, ?)',
+                    'INSERT INTO admins (username, password_hash) VALUES (%s, %s) RETURNING id',
                     (officer['username'], pwd_hash)
                 )
-                admin_id = cursor.lastrowid
+                admin_id = cursor.fetchone()['id']
                 for profile_name in officer['profiles']:
                     cursor.execute(
-                        'INSERT INTO admin_profiles (admin_id, display_name) VALUES (?, ?)',
+                        'INSERT INTO admin_profiles (admin_id, display_name) VALUES (%s, %s)',
                         (admin_id, profile_name)
                     )
         conn.commit()
@@ -149,7 +138,7 @@ def generate_letter_code():
         # Check uniqueness
         with get_db() as conn:
             cursor = conn.cursor()
-            cursor.execute('SELECT id FROM letters WHERE code = ?', (code,))
+            cursor.execute('SELECT id FROM letters WHERE code = %s', (code,))
             if cursor.fetchone() is None:
                 return code
 
@@ -220,19 +209,19 @@ def api_login():
         
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT * FROM admins WHERE username = ?', (username,))
+        cursor.execute('SELECT * FROM admins WHERE username = %s', (username,))
         admin = cursor.fetchone()
         
         if admin and check_password_hash(admin['password_hash'], password):
             # Fetch all profiles/identities matching this admin
-            cursor.execute('SELECT id, display_name FROM admin_profiles WHERE admin_id = ?', (admin['id'],))
+            cursor.execute('SELECT id, display_name FROM admin_profiles WHERE admin_id = %s', (admin['id'],))
             profiles = cursor.fetchall()
             
             if not profiles:
                 # If somehow no profiles exist, create a default one
-                cursor.execute('INSERT INTO admin_profiles (admin_id, display_name) VALUES (?, ?)', (admin['id'], '管理員'))
+                cursor.execute('INSERT INTO admin_profiles (admin_id, display_name) VALUES (%s, %s) RETURNING id', (admin['id'], '管理員'))
                 conn.commit()
-                cursor.execute('SELECT id, display_name FROM admin_profiles WHERE admin_id = ?', (admin['id'],))
+                cursor.execute('SELECT id, display_name FROM admin_profiles WHERE admin_id = %s', (admin['id'],))
                 profiles = cursor.fetchall()
             
             profiles_list = [{'id': p['id'], 'display_name': p['display_name']} for p in profiles]
@@ -277,7 +266,7 @@ def api_login_select():
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            'SELECT display_name FROM admin_profiles WHERE id = ? AND admin_id = ?', 
+            'SELECT display_name FROM admin_profiles WHERE id = %s AND admin_id = %s', 
             (profile_id, admin_id)
         )
         profile = cursor.fetchone()
@@ -320,7 +309,6 @@ def api_me():
         })
     return jsonify({'logged_in': False})
 
-
 # --- ANONYMOUS MAILBOX API (PUBLIC) ---
 
 @app.route('/api/letters/submit', methods=['POST'])
@@ -337,10 +325,9 @@ def submit_letter():
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            'INSERT INTO letters (code, content, is_public) VALUES (?, ?, ?)',
+            'INSERT INTO letters (code, content, is_public) VALUES (%s, %s, %s)',
             (code, content, is_public)
         )
-        conn.commit()
         
     # Send email notification asynchronously in a background thread via Resend
     threading.Thread(target=send_resend_notification, args=(code, content)).start()
@@ -367,7 +354,7 @@ def get_public_letters():
                 SELECT r.content, r.created_at, r.admin_profile_id, p.display_name as replier
                 FROM replies r
                 LEFT JOIN admin_profiles p ON r.admin_profile_id = p.id
-                WHERE r.letter_id = ?
+                WHERE r.letter_id = %s
                 ORDER BY r.created_at ASC
             ''', (letter['id'],))
             replies = cursor.fetchall()
@@ -376,7 +363,7 @@ def get_public_letters():
             for r in replies:
                 replies_list.append({
                     'content': r['content'],
-                    'created_at': r['created_at'],
+                    'created_at': r['created_at'].isoformat() if r['created_at'] else None,
                     'replier': r['replier'] if r['admin_profile_id'] is not None else '投信者',
                     'is_sender': r['admin_profile_id'] is None
                 })
@@ -384,7 +371,7 @@ def get_public_letters():
             result.append({
                 'code': letter['code'],
                 'content': letter['content'],
-                'created_at': letter['created_at'],
+                'created_at': letter['created_at'].isoformat() if letter['created_at'] else None,
                 'replies': replies_list
             })
             
@@ -398,37 +385,18 @@ def query_letter(code):
     code = code.strip()
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT id, content, is_archived, created_at FROM letters WHERE code = ?', (code,))
+        cursor.execute('SELECT id, content, is_archived, created_at FROM letters WHERE code = %s', (code,))
         letter = cursor.fetchone()
         
         if not letter:
             return jsonify({'error': '找不到此提取碼，請檢查輸入是否正確'}), 404
             
-        # Get replies (LEFT JOIN replies to include cases where admin_id is NULL)
-        # Store display name directly at reply submission to ensure proper historical roles.
-        # But wait, here we join with replies. Let's look at replier names.
-        # We'll fetch replier name from the profile matching reply's admin_id, or display_name?
-        # Actually, let's look at replies table: it stores admin_id. We can join with admins to get username,
-        # or we can join with admin_profiles? But an admin has multiple profiles.
-        # So when replies are inserted, we should probably store which PROFILE was used!
-        # Ah! To do this, let's update replies table schema or just look up display_names.
-        # Wait, if we join with admin_profiles, since we didn't specify profile_id in replies,
-        # we can't tell which profile was selected at the time of reply.
-        # A simpler way: let's modify the replies table to have an `admin_profile_id` instead of `admin_id`!
-        # If we have `admin_profile_id INTEGER` (Nullable), it can refer to `admin_profiles(id)`.
-        # When an admin replies, we insert `admin_profile_id = profile_id`.
-        # If `admin_profile_id` is NULL, it is from the anonymous sender.
-        # This is extremely clean and mathematically perfect!
-        # Let's adjust replies table creation in init_db():
-        # `admin_profile_id INTEGER, FOREIGN KEY (admin_profile_id) REFERENCES admin_profiles (id) ON DELETE CASCADE`
-        # Let's make this change! It is much cleaner.
-        
-        # Let's look at query replies SQL:
+        # Get replies
         cursor.execute('''
             SELECT r.content, r.created_at, r.admin_profile_id, p.display_name as replier
             FROM replies r
             LEFT JOIN admin_profiles p ON r.admin_profile_id = p.id
-            WHERE r.letter_id = ?
+            WHERE r.letter_id = %s
             ORDER BY r.created_at ASC
         ''', (letter['id'],))
         replies = cursor.fetchall()
@@ -437,7 +405,7 @@ def query_letter(code):
         for r in replies:
             replies_list.append({
                 'content': r['content'],
-                'created_at': r['created_at'],
+                'created_at': r['created_at'].isoformat() if r['created_at'] else None,
                 'replier': r['replier'] if r['admin_profile_id'] is not None else '投信者 (您)',
                 'is_sender': r['admin_profile_id'] is None
             })
@@ -447,7 +415,7 @@ def query_letter(code):
             'letter': {
                 'content': letter['content'],
                 'is_archived': letter['is_archived'] > 0,
-                'created_at': letter['created_at'],
+                'created_at': letter['created_at'].isoformat() if letter['created_at'] else None,
                 'replies': replies_list
             }
         })
@@ -464,25 +432,22 @@ def sender_reply_to_letter(code):
         
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute('SELECT id FROM letters WHERE code = ?', (code,))
+        cursor.execute('SELECT id FROM letters WHERE code = %s', (code,))
         letter = cursor.fetchone()
         
         if not letter:
             return jsonify({'error': '找不到此信件'}), 404
             
-        # Insert anonymous reply (admin_profile_id is NULL)
+        # Insert anonymous reply
         cursor.execute('''
             INSERT INTO replies (letter_id, admin_profile_id, content)
-            VALUES (?, NULL, ?)
+            VALUES (%s, NULL, %s)
         ''', (letter['id'], content))
         
-        # Mark this letter as "unread" for all administrators again because the sender has replied!
-        cursor.execute('DELETE FROM read_statuses WHERE letter_id = ?', (letter['id'],))
-        
-        conn.commit()
+        # Mark this letter as "unread" for all administrators again
+        cursor.execute('DELETE FROM read_statuses WHERE letter_id = %s', (letter['id'],))
         
         return jsonify({'success': True})
-
 
 # --- ADMIN API (PROTECTED) ---
 
@@ -509,7 +474,7 @@ def get_admin_letters():
                 SELECT 
                     l.id, l.code, l.content, l.is_archived, l.created_at,
                     (SELECT COUNT(*) FROM replies r WHERE r.letter_id = l.id AND r.admin_profile_id IS NOT NULL) as admin_reply_count,
-                    (SELECT COUNT(*) FROM read_statuses rs WHERE rs.letter_id = l.id AND rs.admin_id = ?) as is_read
+                    (SELECT COUNT(*) FROM read_statuses rs WHERE rs.letter_id = l.id AND rs.admin_id = %s) as is_read
                 FROM letters l
                 ORDER BY l.created_at DESC
             ''', (admin_id,))
@@ -524,7 +489,7 @@ def get_admin_letters():
                     'title': preview,
                     'content': l['content'],
                     'is_archived': l['is_archived'] > 0,
-                    'created_at': l['created_at'],
+                    'created_at': l['created_at'].isoformat() if l['created_at'] else None,
                     'replied': l['admin_reply_count'] > 0,
                     'is_read': l['is_read'] > 0
                 })
@@ -543,25 +508,25 @@ def get_letter_detail(letter_id):
         cursor = conn.cursor()
         
         # Get letter
-        cursor.execute('SELECT id, code, content, is_archived, created_at FROM letters WHERE id = ?', (letter_id,))
+        cursor.execute('SELECT id, code, content, is_archived, created_at FROM letters WHERE id = %s', (letter_id,))
         letter = cursor.fetchone()
         
         if not letter:
             return jsonify({'error': '找不到此信件'}), 404
             
-        # Mark as read for this administrator user account
+        # Mark as read for this administrator
         cursor.execute('''
-            INSERT OR IGNORE INTO read_statuses (admin_id, letter_id)
-            VALUES (?, ?)
+            INSERT INTO read_statuses (admin_id, letter_id)
+            VALUES (%s, %s)
+            ON CONFLICT (admin_id, letter_id) DO NOTHING
         ''', (admin_id, letter_id))
-        conn.commit()
         
-        # Get all replies (LEFT JOIN to load sender replies as well)
+        # Get all replies
         cursor.execute('''
             SELECT r.id, r.content, r.created_at, r.admin_profile_id, p.display_name as replier, p.admin_id
             FROM replies r
             LEFT JOIN admin_profiles p ON r.admin_profile_id = p.id
-            WHERE r.letter_id = ?
+            WHERE r.letter_id = %s
             ORDER BY r.created_at ASC
         ''', (letter_id,))
         replies = cursor.fetchall()
@@ -571,7 +536,7 @@ def get_letter_detail(letter_id):
             replies_list.append({
                 'id': r['id'],
                 'content': r['content'],
-                'created_at': r['created_at'],
+                'created_at': r['created_at'].isoformat() if r['created_at'] else None,
                 'replier': r['replier'] if r['admin_profile_id'] is not None else '匿名投信者',
                 'is_own_reply': r['admin_id'] == admin_id if r['admin_id'] is not None else False,
                 'is_sender': r['admin_profile_id'] is None
@@ -584,7 +549,7 @@ def get_letter_detail(letter_id):
                 'code': letter['code'],
                 'content': letter['content'],
                 'is_archived': letter['is_archived'] > 0,
-                'created_at': letter['created_at'],
+                'created_at': letter['created_at'].isoformat() if letter['created_at'] else None,
                 'replies': replies_list
             }
         })
@@ -596,12 +561,11 @@ def delete_letter(letter_id):
         cursor = conn.cursor()
         
         # Check if exists
-        cursor.execute('SELECT id FROM letters WHERE id = ?', (letter_id,))
+        cursor.execute('SELECT id FROM letters WHERE id = %s', (letter_id,))
         if not cursor.fetchone():
             return jsonify({'error': '找不到此信件'}), 404
             
-        cursor.execute('DELETE FROM letters WHERE id = ?', (letter_id,))
-        conn.commit()
+        cursor.execute('DELETE FROM letters WHERE id = %s', (letter_id,))
         
     return jsonify({'success': True, 'message': '信件已成功刪除'})
 
@@ -612,12 +576,11 @@ def archive_letter(letter_id):
         cursor = conn.cursor()
         
         # Check if exists
-        cursor.execute('SELECT id FROM letters WHERE id = ?', (letter_id,))
+        cursor.execute('SELECT id FROM letters WHERE id = %s', (letter_id,))
         if not cursor.fetchone():
             return jsonify({'error': '找不到此信件'}), 404
             
-        cursor.execute('UPDATE letters SET is_archived = 1 WHERE id = ?', (letter_id,))
-        conn.commit()
+        cursor.execute('UPDATE letters SET is_archived = 1 WHERE id = %s', (letter_id,))
         
     return jsonify({'success': True, 'message': '信件已封存'})
 
@@ -628,12 +591,11 @@ def unarchive_letter(letter_id):
         cursor = conn.cursor()
         
         # Check if exists
-        cursor.execute('SELECT id FROM letters WHERE id = ?', (letter_id,))
+        cursor.execute('SELECT id FROM letters WHERE id = %s', (letter_id,))
         if not cursor.fetchone():
             return jsonify({'error': '找不到此信件'}), 404
             
-        cursor.execute('UPDATE letters SET is_archived = 0 WHERE id = ?', (letter_id,))
-        conn.commit()
+        cursor.execute('UPDATE letters SET is_archived = 0 WHERE id = %s', (letter_id,))
         
     return jsonify({'success': True, 'message': '信件已解除封存'})
 
@@ -652,13 +614,13 @@ def reply_to_letter(letter_id):
         cursor = conn.cursor()
         
         # Verify letter exists
-        cursor.execute('SELECT id FROM letters WHERE id = ?', (letter_id,))
+        cursor.execute('SELECT id FROM letters WHERE id = %s', (letter_id,))
         if not cursor.fetchone():
             return jsonify({'error': '找不到此信件'}), 404
             
         # Get active profile ID for currently logged-in identity
         cursor.execute(
-            'SELECT id FROM admin_profiles WHERE admin_id = ? AND display_name = ?',
+            'SELECT id FROM admin_profiles WHERE admin_id = %s AND display_name = %s',
             (admin_id, display_name)
         )
         profile = cursor.fetchone()
@@ -668,9 +630,8 @@ def reply_to_letter(letter_id):
         # Insert reply (associating with specific profile ID)
         cursor.execute('''
             INSERT INTO replies (letter_id, admin_profile_id, content)
-            VALUES (?, ?, ?)
+            VALUES (%s, %s, %s)
         ''', (letter_id, profile_id, content))
-        conn.commit()
         
         return jsonify({'success': True})
 
@@ -687,7 +648,7 @@ def get_admin_users():
         result = []
         for u in users:
             # Query all profiles associated with this user
-            cursor.execute('SELECT id, display_name FROM admin_profiles WHERE admin_id = ?', (u['id'],))
+            cursor.execute('SELECT id, display_name FROM admin_profiles WHERE admin_id = %s', (u['id'],))
             profiles = cursor.fetchall()
             
             result.append({
@@ -715,19 +676,18 @@ def create_admin_user():
         with get_db() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                'INSERT INTO admins (username, password_hash) VALUES (?, ?)',
+                'INSERT INTO admins (username, password_hash) VALUES (%s, %s) RETURNING id',
                 (username, pwd_hash)
             )
-            admin_id = cursor.lastrowid
+            admin_id = cursor.fetchone()['id']
             
             # Create first profile
             cursor.execute(
-                'INSERT INTO admin_profiles (admin_id, display_name) VALUES (?, ?)',
+                'INSERT INTO admin_profiles (admin_id, display_name) VALUES (%s, %s)',
                 (admin_id, display_name)
             )
-            conn.commit()
         return jsonify({'success': True, 'message': '幹部帳號已成功建立！'})
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         return jsonify({'error': '此帳號名稱已被使用，請更換其他名稱'}), 400
     except Exception as e:
         return jsonify({'error': f'建立失敗: {str(e)}'}), 500
@@ -746,16 +706,15 @@ def add_admin_profile(admin_id):
         cursor = conn.cursor()
         
         # Verify admin exists
-        cursor.execute('SELECT id FROM admins WHERE id = ?', (admin_id,))
+        cursor.execute('SELECT id FROM admins WHERE id = %s', (admin_id,))
         if not cursor.fetchone():
             return jsonify({'error': '找不到此帳號'}), 404
             
         try:
             cursor.execute(
-                'INSERT INTO admin_profiles (admin_id, display_name) VALUES (?, ?)',
+                'INSERT INTO admin_profiles (admin_id, display_name) VALUES (%s, %s)',
                 (admin_id, display_name)
             )
-            conn.commit()
             return jsonify({'success': True, 'message': '新身分已成功新增！'})
         except Exception as e:
             return jsonify({'error': f'新增身分失敗: {str(e)}'}), 500
@@ -771,16 +730,15 @@ def delete_admin_user(user_id):
         cursor = conn.cursor()
         
         # Check if exists
-        cursor.execute('SELECT id FROM admins WHERE id = ?', (user_id,))
+        cursor.execute('SELECT id FROM admins WHERE id = %s', (user_id,))
         if not cursor.fetchone():
             return jsonify({'error': '找不到此帳號'}), 404
             
-        cursor.execute('DELETE FROM admins WHERE id = ?', (user_id,))
-        conn.commit()
+        cursor.execute('DELETE FROM admins WHERE id = %s', (user_id,))
         
     return jsonify({'success': True, 'message': '幹部帳號已成功刪除'})
 
-# Initialize database on import (works for Gunicorn production deployment)
+# Initialize database on import
 init_db()
 
 if __name__ == '__main__':
