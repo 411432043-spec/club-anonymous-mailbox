@@ -182,6 +182,7 @@ def send_resend_notification(letter_code, content):
         req = urllib.request.Request(url, data=data)
         req.add_header('Authorization', f'Bearer {resend_api_key}')
         req.add_header('Content-Type', 'application/json')
+        req.add_header('User-Agent', 'Mozilla/5.0')
         
         with urllib.request.urlopen(req) as response:
             res_body = response.read().decode('utf-8')
