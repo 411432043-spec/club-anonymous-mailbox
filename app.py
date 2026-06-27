@@ -70,16 +70,16 @@ def init_db():
             )
         ''')
         
-        # Create replies table (admin_id is Nullable to support anonymous sender replies)
+        # Create replies table (admin_profile_id is Nullable to support anonymous sender replies)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS replies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 letter_id INTEGER NOT NULL,
-                admin_id INTEGER,
+                admin_profile_id INTEGER,
                 content TEXT NOT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (letter_id) REFERENCES letters (id) ON DELETE CASCADE,
-                FOREIGN KEY (admin_id) REFERENCES admins (id) ON DELETE CASCADE
+                FOREIGN KEY (admin_profile_id) REFERENCES admin_profiles (id) ON DELETE CASCADE
             )
         ''')
         
