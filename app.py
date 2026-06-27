@@ -2,6 +2,10 @@ import os
 import random
 import string
 import sqlite3
+import threading
+import smtplib
+from email.mime.text import MIMEText
+from email.header import Header
 from datetime import datetime
 from flask import Flask, request, jsonify, render_template, session, redirect, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -95,19 +99,30 @@ def init_db():
             )
         ''')
         
-        # Seed default administrator if table is empty
-        cursor.execute('SELECT COUNT(*) FROM admins')
-        if cursor.fetchone()[0] == 0:
-            pwd_hash = generate_password_hash('admin123')
-            cursor.execute(
-                'INSERT INTO admins (username, password_hash) VALUES (?, ?)',
-                ('admin', pwd_hash)
-            )
-            admin_id = cursor.lastrowid
-            cursor.execute(
-                'INSERT INTO admin_profiles (admin_id, display_name) VALUES (?, ?)',
-                (admin_id, '系統管理員')
-            )
+        # Seed default administrator and default club officers
+        default_officers = [
+            {'username': 'admin', 'password': 'admin123', 'profiles': ['系統管理員']},
+            {'username': '411432043', 'password': '411432043', 'profiles': ['總務 吳彥廷', '公關 吳彥廷']},
+            {'username': '411487011', 'password': '411487011', 'profiles': ['社長 游逸凡']},
+            {'username': '411422006', 'password': '411422006', 'profiles': ['副社長 劉芯侑']},
+            {'username': '411497219', 'password': '411497219', 'profiles': ['活動 葉承漢', '競賽 葉承漢']}
+        ]
+        
+        for officer in default_officers:
+            cursor.execute('SELECT id FROM admins WHERE username = ?', (officer['username'],))
+            row = cursor.fetchone()
+            if not row:
+                pwd_hash = generate_password_hash(officer['password'])
+                cursor.execute(
+                    'INSERT INTO admins (username, password_hash) VALUES (?, ?)',
+                    (officer['username'], pwd_hash)
+                )
+                admin_id = cursor.lastrowid
+                for profile_name in officer['profiles']:
+                    cursor.execute(
+                        'INSERT INTO admin_profiles (admin_id, display_name) VALUES (?, ?)',
+                        (admin_id, profile_name)
+                    )
         conn.commit()
 
 # Helper to generate unique 6-digit random number code
@@ -121,6 +136,58 @@ def generate_letter_code():
             cursor.execute('SELECT id FROM letters WHERE code = ?', (code,))
             if cursor.fetchone() is None:
                 return code
+
+def send_notification_email(letter_code, content):
+    smtp_sender = os.environ.get('SMTP_SENDER')
+    smtp_password = os.environ.get('SMTP_PASSWORD')
+    smtp_receivers = os.environ.get('SMTP_RECEIVERS')
+    
+    # If environment variables are not configured, skip sending gracefully
+    if not smtp_sender or not smtp_password or not smtp_receivers:
+        print("Email configuration not set. Skipping notification.")
+        return
+        
+    try:
+        # Prepare email
+        subject = f"【社團匿名信箱】收到一封新的匿名來信！(代碼: {letter_code})"
+        
+        # Preview of content
+        preview = content[:150] + ('...' if len(content) > 150 else '')
+        
+        body = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+                <h2 style="color: #4f46e5; border-bottom: 2px solid #e0e7ff; padding-bottom: 10px; margin-top: 0;">📬 匿名信箱收到新的來信囉！</h2>
+                <p><strong>信件代碼：</strong><code style="background: #f3f4f6; padding: 2px 6px; border-radius: 4px; font-size: 1.1em; color: #1f2937;">{letter_code}</code></p>
+                <p><strong>寄送時間：</strong>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+                <p><strong>信件內容預覽：</strong></p>
+                <div style="background: #f9fafb; border-left: 4px solid #6366f1; padding: 15px; border-radius: 4px; margin: 15px 0; white-space: pre-wrap;">{preview}</div>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;"/>
+                <p style="margin-bottom: 0;">🔑 請登入您的 <a href="https://club-anonymous-mailbox.onrender.com/admin" style="color: #4f46e5; text-decoration: none; font-weight: bold;">社團信箱管理後台</a> 來閱讀完整內容並進行回覆。</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        msg = MIMEText(body, 'html', 'utf-8')
+        msg['Subject'] = Header(subject, 'utf-8')
+        msg['From'] = smtp_sender
+        msg['To'] = smtp_receivers
+        
+        # Parse receivers list
+        receivers_list = [r.strip() for r in smtp_receivers.split(',')]
+        
+        # Send via Gmail SMTP (port 587 with STARTTLS)
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(smtp_sender, smtp_password)
+            server.sendmail(smtp_sender, receivers_list, msg.as_string())
+            
+        print("Notification email sent successfully.")
+    except Exception as e:
+        print(f"Failed to send email notification: {e}")
 
 @app.route('/')
 def index():
@@ -259,6 +326,9 @@ def submit_letter():
             (code, content)
         )
         conn.commit()
+        
+    # Send email notification asynchronously in a background thread
+    threading.Thread(target=send_notification_email, args=(code, content)).start()
         
     return jsonify({
         'success': True,
