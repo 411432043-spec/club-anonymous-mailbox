@@ -1,0 +1,17 @@
+# SQLite Database
+database.db
+database.db-journal
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+make_logo_transparent.py
+
+# OS files
+.DS_Store
+Thumbs.db

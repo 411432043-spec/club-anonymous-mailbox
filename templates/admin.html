@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>社團匿名信箱 - 後台管理儀表板</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- html2canvas library for IG story card export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+</head>
+<body>
+
+    <header>
+        <div class="logo-container">
+            <div class="logo-icon">🔑</div>
+            <div class="logo-text">匿名信箱管理後台</div>
+        </div>
+        
+        <!-- Header Menu Tabs -->
+        <div class="nav-links">
+            <a href="/" class="btn-nav" id="btn-nav-home">返回前台</a>
+            <button id="btn-nav-letters" class="btn-nav active" style="display: none; cursor: pointer; background: transparent; border: 1px solid var(--panel-border);" onclick="switchAdminSection('letters')">📬 信件管理</button>
+            <button id="btn-nav-users" class="btn-nav" style="display: none; cursor: pointer; background: transparent; border: 1px solid var(--panel-border);" onclick="switchAdminSection('users')">👥 帳號管理</button>
+            <button id="btn-logout" class="btn-nav" style="display: none; cursor: pointer; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171;" onclick="handleLogout()">登出</button>
+        </div>
+    </header>
+
+    <main>
+        <!-- SECTION 1: LOGIN BOX -->
+        <div id="login-section" class="login-container glass-panel">
+            <!-- Form Wrapper -->
+            <div id="login-form-wrapper">
+                <h2 style="font-size: 1.5rem; margin-bottom: 1.5rem; text-align: center;">幹部/管理員登入</h2>
+                
+                <form id="login-form" onsubmit="handleLogin(event)">
+                    <div class="form-group">
+                        <label for="username">帳號名稱</label>
+                        <input type="text" id="username" class="form-control" placeholder="請輸入帳號" required autocomplete="username">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password">密碼</label>
+                        <input type="password" id="password" class="form-control" placeholder="請輸入密碼" required autocomplete="current-password">
+                    </div>
+
+                    <button type="submit" class="btn-submit" style="margin-top: 1rem;">
+                        登入系統 🔓
+                    </button>
+                </form>
+                <div style="margin-top: 1.5rem; text-align: center; font-size: 0.85rem; color: var(--text-muted);">
+                    預設管理員帳號：`admin` / 密碼：`admin123`<br>
+                    登入後可透過「帳號管理」分頁建立或更換其他專屬帳號。
+                </div>
+            </div>
+
+            <!-- Identity Selection Wrapper -->
+            <div id="identity-select-wrapper" style="display: none; text-align: center;">
+                <h2 style="font-size: 1.5rem; margin-bottom: 0.5rem;">選擇登入身分</h2>
+                <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">您的帳號有多個角色職位，請選擇本次登入身分：</p>
+                
+                <div id="identity-buttons-container" style="display: flex; flex-direction: column; gap: 0.8rem;">
+                    <!-- Identity buttons injected dynamically -->
+                </div>
+                
+                <button class="btn-copy" style="margin-top: 1.5rem; width: 100%; border-radius: 8px; padding: 0.8rem;" onclick="cancelIdentitySelection()">
+                    返回登入頁
+                </button>
+            </div>
+        </div>
+
+        <!-- SECTION 2: LETTERS DASHBOARD VIEW (DASHBOARD TAB) -->
+        <div id="letters-dashboard-view" class="admin-grid" style="display: none;">
+            <!-- Left Sidebar: Letter List -->
+            <div class="admin-sidebar">
+                <div class="sidebar-filters">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                        <span class="sidebar-title">匿名信件列表</span>
+                        <span id="current-user-tag" style="font-size: 0.8rem; color: var(--primary); font-weight: 600;"></span>
+                    </div>
+
+                    <!-- Search Input Box -->
+                    <div class="form-group" style="margin-bottom: 0.8rem;">
+                        <input type="text" id="search-input" class="form-control" placeholder="🔍 搜尋信件內容 / 提取碼..." style="padding: 0.5rem 0.8rem; font-size: 0.85rem;" oninput="renderSidebarList()">
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-bottom: 0.5rem;">
+                        <select id="filter-read" class="form-control" style="padding: 0.5rem; font-size: 0.85rem;" onchange="loadLettersList()">
+                            <option value="all">讀取狀態</option>
+                            <option value="unread">未讀 (個人)</option>
+                            <option value="read">已讀 (個人)</option>
+                        </select>
+                        <select id="filter-replied" class="form-control" style="padding: 0.5rem; font-size: 0.85rem;" onchange="loadLettersList()">
+                            <option value="all">回覆狀態</option>
+                            <option value="unreplied">未回覆</option>
+                            <option value="replied">已回覆</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <select id="filter-archive" class="form-control" style="padding: 0.5rem; font-size: 0.85rem;" onchange="loadLettersList()">
+                            <option value="active" selected>📦 正常信件</option>
+                            <option value="archived">📁 已封存信件</option>
+                            <option value="all">🗂️ 全部信件 (正常+封存)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Letter List Container -->
+                <div id="letter-list-container" class="letter-list">
+                    <!-- Letter Items will load here -->
+                </div>
+            </div>
+
+            <!-- Right Main Content: Letter Details & Actions -->
+            <div class="admin-content" id="letter-detail-pane">
+                <div class="empty-placeholder">
+                    <div class="empty-icon">📂</div>
+                    <h3>請從左側選擇一封信件</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem;">
+                        點擊後可查看信件完整內容、變更已讀狀態並進行回覆、封存或刪除。
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECTION 3: USERS DASHBOARD VIEW (ACCOUNTS TAB) -->
+        <div id="users-dashboard-view" class="admin-grid" style="display: none; grid-template-columns: 1.2fr 1fr;">
+            
+            <!-- Left Side: Admin Accounts List Table -->
+            <div class="admin-content" style="overflow-y: auto;">
+                <h2 style="font-size: 1.4rem; margin-bottom: 1.5rem; color: var(--primary); display: flex; align-items: center; gap: 0.5rem;">
+                    <span>👥</span> 幹部帳號總管
+                </h2>
+                
+                <div style="width: 100%; border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden; background: rgba(15, 23, 42, 0.4);">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--panel-border); background: rgba(255, 255, 255, 0.02); color: var(--text-muted);">
+                                <th style="padding: 1rem 1.2rem; font-weight: 600;">使用者帳號</th>
+                                <th style="padding: 1rem 1.2rem; font-weight: 600;">幹部暱稱 (回覆顯示)</th>
+                                <th style="padding: 1rem 1.2rem; font-weight: 600; text-align: right;">管理操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-list-body">
+                            <!-- Users will load here dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Right Side: Create Admin Account Card Form -->
+            <div class="admin-content">
+                <h2 style="font-size: 1.4rem; margin-bottom: 1.5rem; color: var(--secondary); display: flex; align-items: center; gap: 0.5rem;">
+                    <span>➕</span> 新增幹部帳號
+                </h2>
+                
+                <form id="create-user-form" onsubmit="handleCreateUser(event)">
+                    <div class="form-group">
+                        <label for="new-username">登入帳號名稱</label>
+                        <input type="text" id="new-username" class="form-control" placeholder="輸入登入用帳密名稱" required minlength="3">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="new-display-name">顯示暱稱 (如：副會長 阿傑)</label>
+                        <input type="text" id="new-display-name" class="form-control" placeholder="回覆匿名信件時顯示的名稱" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="new-password">登入密碼</label>
+                        <input type="password" id="new-password" class="form-control" placeholder="請設定登入密碼 (6位數以上)" required minlength="6" autocomplete="new-password">
+                    </div>
+
+                    <button type="submit" class="btn-submit" style="margin-top: 1rem;">
+                        建立幹部帳號 🚀
+                    </button>
+                </form>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- HIDDEN IG STORY EXPORT TEMPLATE CARD (Rendered off-screen, size 1080x1920) -->
+    <div id="ig-share-card" class="ig-story-layout" style="position: absolute; left: -9999px; top: -9999px;">
+        <div class="ig-story-inner">
+            <div class="ig-card-watermark" style="text-align: center;">
+                <img src="/static/logo.png" alt="NDHU TKD Logo" class="ig-logo-img">
+            </div>
+            
+            <div class="ig-story-block letter-block">
+                <div class="block-tag tag-sender">📬 匿名投稿：</div>
+                <div class="block-content" id="ig-letter-content">信件內容將會顯示在這裡...</div>
+            </div>
+            
+            <div class="ig-story-block reply-block">
+                <div class="block-tag tag-admin" id="ig-replier-tag">💬 幹部回覆：</div>
+                <div class="block-content" id="ig-reply-content">回覆內容將會顯示在這裡...</div>
+            </div>
+            
+            <div class="ig-card-footer">
+                東華跆拳運動休閒社 &bull; 匿名信箱
+            </div>
+        </div>
+    </div>
+
+    <!-- Global Toast Notification -->
+    <div id="toast" class="toast-msg"></div>
+
+    <footer>
+        <p>&copy; 2026 社團匿名信箱管理系統. All rights reserved.</p>
+    </footer>
+
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>
