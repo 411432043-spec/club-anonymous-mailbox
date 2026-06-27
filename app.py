@@ -22,6 +22,20 @@ def init_db():
     with get_db() as conn:
         cursor = conn.cursor()
         
+        # Migration check: if old database exists without admin_profile_id in replies table
+        try:
+            cursor.execute("PRAGMA table_info(replies)")
+            columns = [row['name'] for row in cursor.fetchall()]
+            if columns and 'admin_profile_id' not in columns:
+                cursor.execute("DROP TABLE IF EXISTS read_statuses")
+                cursor.execute("DROP TABLE IF EXISTS replies")
+                cursor.execute("DROP TABLE IF EXISTS admin_profiles")
+                cursor.execute("DROP TABLE IF EXISTS admins")
+                cursor.execute("DROP TABLE IF EXISTS letters")
+                conn.commit()
+        except Exception as e:
+            print("Migration check skipped or failed:", e)
+            
         # Create admins table (handles login credentials only)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS admins (
