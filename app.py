@@ -43,7 +43,19 @@ def init_db():
                     cursor.execute("DROP TABLE IF EXISTS letters")
                     conn.commit()
         except Exception as e:
-            print("Migration check failed:", e)
+            print("Migration check failed:", e, file=sys.stderr, flush=True)
+
+        # Migration check 2: if letters table exists but doesn't have is_public column
+        try:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='letters'")
+            if cursor.fetchone():
+                cursor.execute("PRAGMA table_info(letters)")
+                columns = [row['name'] for row in cursor.fetchall()]
+                if columns and 'is_public' not in columns:
+                    cursor.execute("ALTER TABLE letters ADD COLUMN is_public INTEGER DEFAULT 0")
+                    conn.commit()
+        except Exception as e:
+            print("Migration of letters table for is_public failed:", e, file=sys.stderr, flush=True)
 
         # Create admins table (handles login credentials only)
         cursor.execute('''
@@ -73,6 +85,7 @@ def init_db():
                 category TEXT DEFAULT '一般',
                 content TEXT NOT NULL,
                 is_archived INTEGER DEFAULT 0,
+                is_public INTEGER DEFAULT 0,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
@@ -314,6 +327,7 @@ def api_me():
 def submit_letter():
     data = request.get_json() or {}
     content = data.get('content', '').strip()
+    is_public = 1 if data.get('is_public') else 0
     
     if not content:
         return jsonify({'error': '信件內容不能為空'}), 400
@@ -323,8 +337,8 @@ def submit_letter():
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute(
-            'INSERT INTO letters (code, content) VALUES (?, ?)',
-            (code, content)
+            'INSERT INTO letters (code, content, is_public) VALUES (?, ?, ?)',
+            (code, content, is_public)
         )
         conn.commit()
         
@@ -334,6 +348,49 @@ def submit_letter():
     return jsonify({
         'success': True,
         'code': code
+    })
+
+@app.route('/api/letters/public', methods=['GET'])
+def get_public_letters():
+    with get_db() as conn:
+        cursor = conn.cursor()
+        # Fetch all public letters (newest first)
+        cursor.execute(
+            'SELECT id, code, content, created_at FROM letters WHERE is_public = 1 AND is_archived = 0 ORDER BY created_at DESC'
+        )
+        letters = cursor.fetchall()
+        
+        result = []
+        for letter in letters:
+            # Fetch replies for this letter
+            cursor.execute('''
+                SELECT r.content, r.created_at, r.admin_profile_id, p.display_name as replier
+                FROM replies r
+                LEFT JOIN admin_profiles p ON r.admin_profile_id = p.id
+                WHERE r.letter_id = ?
+                ORDER BY r.created_at ASC
+            ''', (letter['id'],))
+            replies = cursor.fetchall()
+            
+            replies_list = []
+            for r in replies:
+                replies_list.append({
+                    'content': r['content'],
+                    'created_at': r['created_at'],
+                    'replier': r['replier'] if r['admin_profile_id'] is not None else '投信者',
+                    'is_sender': r['admin_profile_id'] is None
+                })
+                
+            result.append({
+                'code': letter['code'],
+                'content': letter['content'],
+                'created_at': letter['created_at'],
+                'replies': replies_list
+            })
+            
+    return jsonify({
+        'success': True,
+        'letters': result
     })
 
 @app.route('/api/letters/query/<code>', methods=['GET'])
