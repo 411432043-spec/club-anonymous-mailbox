@@ -19,23 +19,29 @@ def init_db():
     db_dir = os.path.dirname(DATABASE)
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
+    # Migration check: if old database exists without admin_profile_id in replies table
+    # We check before opening the main connection, and physically delete the file to avoid Gunicorn worker race conditions.
+    try:
+        if os.path.exists(DATABASE):
+            conn_temp = sqlite3.connect(DATABASE)
+            conn_temp.row_factory = sqlite3.Row
+            cursor_temp = conn_temp.cursor()
+            cursor_temp.execute("PRAGMA table_info(replies)")
+            columns = [row['name'] for row in cursor_temp.fetchall()]
+            conn_temp.close()
+            
+            if columns and 'admin_profile_id' not in columns:
+                try:
+                    os.remove(DATABASE)
+                    print("Removed old schema database file successfully.")
+                except OSError:
+                    pass # Ignored if another concurrent Gunicorn worker deleted it first
+    except Exception as e:
+        print("Migration check skipped or failed:", e)
+
     with get_db() as conn:
         cursor = conn.cursor()
         
-        # Migration check: if old database exists without admin_profile_id in replies table
-        try:
-            cursor.execute("PRAGMA table_info(replies)")
-            columns = [row['name'] for row in cursor.fetchall()]
-            if columns and 'admin_profile_id' not in columns:
-                cursor.execute("DROP TABLE IF EXISTS read_statuses")
-                cursor.execute("DROP TABLE IF EXISTS replies")
-                cursor.execute("DROP TABLE IF EXISTS admin_profiles")
-                cursor.execute("DROP TABLE IF EXISTS admins")
-                cursor.execute("DROP TABLE IF EXISTS letters")
-                conn.commit()
-        except Exception as e:
-            print("Migration check skipped or failed:", e)
-            
         # Create admins table (handles login credentials only)
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS admins (
