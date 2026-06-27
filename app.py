@@ -16,6 +16,9 @@ def get_db():
     return conn
 
 def init_db():
+    db_dir = os.path.dirname(DATABASE)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
     with get_db() as conn:
         cursor = conn.cursor()
         
@@ -630,6 +633,8 @@ def delete_admin_user(user_id):
         
     return jsonify({'success': True, 'message': '幹部帳號已成功刪除'})
 
+# Initialize database on import (works for Gunicorn production deployment)
+init_db()
+
 if __name__ == '__main__':
-    init_db()
     app.run(host='0.0.0.0', port=5000, debug=True)
