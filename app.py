@@ -138,13 +138,13 @@ def generate_letter_code():
                 return code
 
 def send_notification_email(letter_code, content):
-    smtp_sender = os.environ.get('SMTP_SENDER')
-    smtp_password = os.environ.get('SMTP_PASSWORD')
-    smtp_receivers = os.environ.get('SMTP_RECEIVERS')
+    smtp_sender = os.environ.get('SMTP_SENDER') or os.environ.get('MAIL_SENDER')
+    smtp_password = os.environ.get('SMTP_PASSWORD') or os.environ.get('MAIL_PASSWORD')
+    smtp_receivers = os.environ.get('SMTP_RECEIVERS') or os.environ.get('MAIL_RECEIVER') or os.environ.get('MAIL_RECEIVERS')
     
     # If environment variables are not configured, skip sending gracefully
     if not smtp_sender or not smtp_password or not smtp_receivers:
-        print("Email configuration not set. Skipping notification.")
+        print(f"Email configuration not set (Sender: {bool(smtp_sender)}, Pwd: {bool(smtp_password)}, Receivers: {bool(smtp_receivers)}). Skipping.", flush=True)
         return
         
     try:
@@ -185,9 +185,9 @@ def send_notification_email(letter_code, content):
             server.login(smtp_sender, smtp_password)
             server.sendmail(smtp_sender, receivers_list, msg.as_string())
             
-        print("Notification email sent successfully.")
+        print("Notification email sent successfully.", flush=True)
     except Exception as e:
-        print(f"Failed to send email notification: {e}")
+        print(f"Failed to send email notification: {e}", flush=True)
 
 @app.route('/')
 def index():
