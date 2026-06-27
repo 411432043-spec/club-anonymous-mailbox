@@ -5,6 +5,8 @@ import string
 import sqlite3
 import threading
 import smtplib
+import urllib.request
+import urllib.parse
 from email.mime.text import MIMEText
 from email.header import Header
 from datetime import datetime
@@ -138,22 +140,18 @@ def generate_letter_code():
             if cursor.fetchone() is None:
                 return code
 
-def send_notification_email(letter_code, content):
-    smtp_sender = os.environ.get('SMTP_SENDER') or os.environ.get('MAIL_SENDER')
-    smtp_password = os.environ.get('SMTP_PASSWORD') or os.environ.get('MAIL_PASSWORD')
-    smtp_receivers = os.environ.get('SMTP_RECEIVERS') or os.environ.get('MAIL_RECEIVER') or os.environ.get('MAIL_RECEIVERS')
+def send_resend_notification(letter_code, content):
+    resend_api_key = os.environ.get('RESEND_API_KEY')
+    resend_receiver = os.environ.get('RESEND_RECEIVER')
     
-    # If environment variables are not configured, skip sending gracefully
-    if not smtp_sender or not smtp_password or not smtp_receivers:
-        print(f"Email configuration not set (Sender: {bool(smtp_sender)}, Pwd: {bool(smtp_password)}, Receivers: {bool(smtp_receivers)}). Skipping.", file=sys.stderr, flush=True)
+    if not resend_api_key or not resend_receiver:
+        print(f"Resend config not set (Key: {bool(resend_api_key)}, Receiver: {bool(resend_receiver)}). Skipping.", file=sys.stderr, flush=True)
         return
         
     try:
-        # Prepare email
-        subject = f"【社團匿名信箱】收到一封新的匿名來信！(代碼: {letter_code})"
-        
-        # Preview of content
+        import json
         preview = content[:150] + ('...' if len(content) > 150 else '')
+        subject = f"【社團匿名信箱】收到一封新的匿名來信！(代碼: {letter_code})"
         
         body = f"""
         <html>
@@ -172,23 +170,24 @@ def send_notification_email(letter_code, content):
         </html>
         """
         
-        msg = MIMEText(body, 'html', 'utf-8')
-        msg['Subject'] = Header(subject, 'utf-8')
-        msg['From'] = smtp_sender
-        msg['To'] = smtp_receivers
+        payload = {
+            "from": "onboarding@resend.dev",
+            "to": resend_receiver,
+            "subject": subject,
+            "html": body
+        }
         
-        # Parse receivers list
-        receivers_list = [r.strip() for r in smtp_receivers.split(',')]
+        url = "https://api.resend.com/emails"
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data)
+        req.add_header('Authorization', f'Bearer {resend_api_key}')
+        req.add_header('Content-Type', 'application/json')
         
-        # Send via Gmail SMTP (port 587 with STARTTLS)
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
-            server.login(smtp_sender, smtp_password)
-            server.sendmail(smtp_sender, receivers_list, msg.as_string())
-            
-        print("Notification email sent successfully.", file=sys.stderr, flush=True)
+        with urllib.request.urlopen(req) as response:
+            res_body = response.read().decode('utf-8')
+            print(f"Resend API response: {res_body}", file=sys.stderr, flush=True)
     except Exception as e:
-        print(f"Failed to send email notification: {e}", file=sys.stderr, flush=True)
+        print(f"Failed to send email notification via Resend: {e}", file=sys.stderr, flush=True)
 
 @app.route('/')
 def index():
@@ -328,8 +327,8 @@ def submit_letter():
         )
         conn.commit()
         
-    # Send email notification asynchronously in a background thread
-    threading.Thread(target=send_notification_email, args=(code, content)).start()
+    # Send email notification asynchronously in a background thread via Resend
+    threading.Thread(target=send_resend_notification, args=(code, content)).start()
         
     return jsonify({
         'success': True,
