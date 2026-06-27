@@ -372,34 +372,37 @@ def admin_page():
 @require_admin
 def get_admin_letters():
     admin_id = session['admin_id']
-    
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT 
-                l.id, l.code, l.content, l.is_archived, l.created_at,
-                (SELECT COUNT(*) FROM replies r WHERE r.letter_id = l.id AND r.admin_profile_id IS NOT NULL) as admin_reply_count,
-                (SELECT COUNT(*) FROM read_statuses rs WHERE rs.letter_id = l.id AND rs.admin_id = ?) as is_read
-            FROM letters l
-            ORDER BY l.created_at DESC
-        ''', (admin_id,))
-        letters = cursor.fetchall()
-        
-        result = []
-        for l in letters:
-            preview = l['content'][:25] + ('...' if len(l['content']) > 25 else '')
-            result.append({
-                'id': l['id'],
-                'code': l['code'],
-                'title': preview,
-                'content': l['content'],
-                'is_archived': l['is_archived'] > 0,
-                'created_at': l['created_at'],
-                'replied': l['admin_reply_count'] > 0,
-                'is_read': l['is_read'] > 0
-            })
+    try:
+        with get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT 
+                    l.id, l.code, l.content, l.is_archived, l.created_at,
+                    (SELECT COUNT(*) FROM replies r WHERE r.letter_id = l.id AND r.admin_profile_id IS NOT NULL) as admin_reply_count,
+                    (SELECT COUNT(*) FROM read_statuses rs WHERE rs.letter_id = l.id AND rs.admin_id = ?) as is_read
+                FROM letters l
+                ORDER BY l.created_at DESC
+            ''', (admin_id,))
+            letters = cursor.fetchall()
             
-        return jsonify({'letters': result})
+            result = []
+            for l in letters:
+                preview = l['content'][:25] + ('...' if len(l['content']) > 25 else '')
+                result.append({
+                    'id': l['id'],
+                    'code': l['code'],
+                    'title': preview,
+                    'content': l['content'],
+                    'is_archived': l['is_archived'] > 0,
+                    'created_at': l['created_at'],
+                    'replied': l['admin_reply_count'] > 0,
+                    'is_read': l['is_read'] > 0
+                })
+                
+            return jsonify({'letters': result})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': f'Database error: {str(e)}\n{traceback.format_exc()}'}), 500
 
 @app.route('/api/admin/letters/<int:letter_id>', methods=['GET'])
 @require_admin
