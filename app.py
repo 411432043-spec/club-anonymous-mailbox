@@ -1,4 +1,5 @@
 import os
+import sys
 import random
 import string
 import sqlite3
@@ -144,7 +145,7 @@ def send_notification_email(letter_code, content):
     
     # If environment variables are not configured, skip sending gracefully
     if not smtp_sender or not smtp_password or not smtp_receivers:
-        print(f"Email configuration not set (Sender: {bool(smtp_sender)}, Pwd: {bool(smtp_password)}, Receivers: {bool(smtp_receivers)}). Skipping.", flush=True)
+        print(f"Email configuration not set (Sender: {bool(smtp_sender)}, Pwd: {bool(smtp_password)}, Receivers: {bool(smtp_receivers)}). Skipping.", file=sys.stderr, flush=True)
         return
         
     try:
@@ -185,9 +186,9 @@ def send_notification_email(letter_code, content):
             server.login(smtp_sender, smtp_password)
             server.sendmail(smtp_sender, receivers_list, msg.as_string())
             
-        print("Notification email sent successfully.", flush=True)
+        print("Notification email sent successfully.", file=sys.stderr, flush=True)
     except Exception as e:
-        print(f"Failed to send email notification: {e}", flush=True)
+        print(f"Failed to send email notification: {e}", file=sys.stderr, flush=True)
 
 @app.route('/')
 def index():
