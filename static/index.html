@@ -31,145 +31,191 @@
             </p>
         </div>
 
-        <!-- Section Switch Tabs -->
-        <div class="tabs-container">
-            <button class="tab-btn active" id="tab-submit-btn" onclick="switchTab('submit')">✍ 我要投信</button>
-            <button class="tab-btn" id="tab-query-btn" onclick="switchTab('query')">🔍 查詢回覆</button>
-            <button class="tab-btn" id="tab-public-btn" onclick="switchTab('public')">📢 公開信件板</button>
-        </div>
-
-        <!-- TAB 1: SUBMIT LETTER -->
-        <div id="tab-submit" class="glass-panel">
-            <h2 style="font-size: 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                <span style="color: var(--primary);">✍</span> 填寫匿名信件
-            </h2>
-            
-            <form id="submit-form" onsubmit="handleLetterSubmit(event)">
-                <div class="form-group">
-                    <label for="content">信件內容</label>
-                    <textarea id="content" class="form-control" placeholder="請詳細寫下您的意見、問題或想法（僅限內容，不留任何個人資訊）..." required maxlength="2000" style="min-height: 200px;"></textarea>
+        <div class="content-layout" style="display: flex; gap: 2rem; align-items: flex-start; flex-wrap: wrap; margin-top: 1rem;">
+            <!-- Left Column: Mailbox Panels -->
+            <div class="app-column" style="flex: 1.5; min-width: 320px;">
+                <!-- Section Switch Tabs -->
+                <div class="tabs-container">
+                    <button class="tab-btn active" id="tab-submit-btn" onclick="switchTab('submit')">✍ 我要投信</button>
+                    <button class="tab-btn" id="tab-query-btn" onclick="switchTab('query')">🔍 查詢回覆</button>
+                    <button class="tab-btn" id="tab-public-btn" onclick="switchTab('public')">📢 公開信件板</button>
                 </div>
 
-                <div class="form-group" style="margin-bottom: 1.5rem;">
-                    <label>投稿隱私設定</label>
-                    <div style="display: flex; flex-direction: column; gap: 0.8rem; margin-top: 0.5rem;">
-                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: #fff; font-weight: 500;">
-                            <input type="radio" name="is_public" value="0" checked style="accent-color: var(--primary); transform: scale(1.15);">
-                            🔒 私密投稿 (需憑 6 位數提取碼自行查詢)
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: #fff; font-weight: 500;">
-                            <input type="radio" name="is_public" value="1" style="accent-color: var(--primary); transform: scale(1.15);">
-                            📢 公開投稿 (公開發布，免提取碼所有人可見)
-                        </label>
-                    </div>
-                </div>
-
-                <button type="submit" class="btn-submit" id="submit-btn">
-                    <span>發送匿名信件</span> 🚀
-                </button>
-            </form>
-
-            <!-- Submission Success Modal/Result inside Panel -->
-            <div id="submit-success-card" style="display: none; text-align: center; padding: 1.5rem 0;" class="fadeIn">
-                <div style="font-size: 4rem; color: var(--success); margin-bottom: 1rem;">🎉</div>
-                <h3 style="font-size: 1.6rem; margin-bottom: 0.5rem;">投遞成功！</h3>
-                
-                <div id="success-private-msg">
-                    <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 1.5rem;">
-                        您的信件已放入匿名信箱。請務必**妥善保存下方 6 位數提取碼**，日後可憑此提取碼查詢社團管理員的回覆。
-                    </p>
-                </div>
-
-                <div id="success-public-msg" style="display: none;">
-                    <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 1rem;">
-                        您的信件已成功發布至 **「公開信件板」**，所有人均可點閱。
-                    </p>
-                    <p style="color: #a78bfa; max-width: 500px; margin: 0 auto 1.5rem; font-size: 0.95rem; font-weight: 500;">
-                        💡 提示：雖然是公開投稿，您依然可以複製並保存下方的 **6 位數提取碼**。日後在「查詢回覆」分頁輸入它，即可單獨向幹部進行後續的補充說明或對話！
-                    </p>
-                </div>
-
-                <div class="code-box" style="max-width: 320px; margin: 1.5rem auto;">
-                    <span class="code-text" id="generated-code">123456</span>
-                    <button class="btn-copy" id="btn-copy-code" onclick="copyCode()">複製</button>
-                </div>
-                
-                <button class="btn-submit" style="width: auto; padding: 0.8rem 2rem; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-border); margin-top: 1rem;" onclick="resetSubmitForm()">
-                    繼續投遞新信件
-                </button>
-            </div>
-        </div>
-
-        <!-- TAB 2: QUERY STATUS & REPLIES -->
-        <div id="tab-query" class="glass-panel" style="display: none;">
-            <h2 style="font-size: 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                <span style="color: var(--secondary);">🔍</span> 查詢回覆狀態
-            </h2>
-
-            <div class="form-group" style="display: flex; gap: 1rem;">
-                <input type="text" id="query-code-input" class="form-control" placeholder="請輸入 6 位數提取碼（例如：123456）" style="flex: 1;" required maxlength="6" pattern="\d{6}">
-                <button type="button" class="btn-submit" style="width: auto; padding: 0 2rem;" onclick="handleLetterQuery()">
-                    查詢
-                </button>
-            </div>
-
-            <!-- Query Results -->
-            <div id="query-result" style="display: none;">
-                <div class="letter-result-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.8rem;">
-                        <h3 style="font-size: 1.2rem; color: var(--primary);">📬 您的信件</h3>
-                        <span style="font-size: 0.85rem; color: var(--text-muted);">
-                             投遞時間：<span id="result-date">2026/06/27 12:00:00</span>
-                        </span>
-                    </div>
+                <!-- TAB 1: SUBMIT LETTER -->
+                <div id="tab-submit" class="glass-panel">
+                    <h2 style="font-size: 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="color: var(--primary);">✍</span> 填寫匿名信件
+                    </h2>
                     
-                    <div id="result-content" style="white-space: pre-wrap; background: rgba(15, 23, 42, 0.4); padding: 1.2rem; border-radius: 12px; margin-bottom: 1.5rem;">
-                        信件內容
-                    </div>
+                    <form id="submit-form" onsubmit="handleLetterSubmit(event)">
+                        <div class="form-group">
+                            <label for="content">信件內容</label>
+                            <textarea id="content" class="form-control" placeholder="請詳細寫下您的意見、問題或想法（僅限內容，不留任何個人資訊）..." required maxlength="2000" style="min-height: 200px;"></textarea>
+                        </div>
 
-                    <h4 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--primary); display: flex; align-items: center; gap: 0.5rem;">
-                        <span>💬</span> 管理員回覆
-                    </h4>
-                    
-                    <div id="replies-container" class="replies-timeline">
-                        <!-- Replies will be rendered here dynamically -->
-                    </div>
-
-                    <!-- Sender Reply Compose Box -->
-                    <div style="margin-top: 2rem; border-top: 1px solid var(--panel-border); padding-top: 1.5rem;">
-                        <h4 style="font-size: 1.1rem; margin-bottom: 0.75rem; color: var(--secondary);">✍ 繼續補充 / 回覆幹部</h4>
-                        <form id="sender-reply-form" onsubmit="submitSenderReply(event)">
-                            <div class="form-group">
-                                <textarea id="sender-reply-content" class="form-control" placeholder="輸入要補充的內容或回覆幹部..." style="min-height: 80px;" required></textarea>
+                        <div class="form-group" style="margin-bottom: 1.5rem;">
+                            <label>投稿隱私設定</label>
+                            <div style="display: flex; flex-direction: column; gap: 0.8rem; margin-top: 0.5rem;">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: #fff; font-weight: 500;">
+                                    <input type="radio" name="is_public" value="0" checked style="accent-color: var(--primary); transform: scale(1.15);">
+                                    🔒 私密投稿 (需憑 6 位數提取碼自行查詢)
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: #fff; font-weight: 500;">
+                                    <input type="radio" name="is_public" value="1" style="accent-color: var(--primary); transform: scale(1.15);">
+                                    📢 公開投稿 (公開發布，免提取碼所有人可見)
+                                </label>
                             </div>
-                            <button type="submit" class="btn-submit" style="width: auto; padding: 0.6rem 1.5rem; font-size: 0.95rem; float: right; margin-bottom: 1rem;">
-                                送出回覆 📤
-                            </button>
-                        </form>
-                        <div style="clear: both;"></div>
+                        </div>
+
+                        <button type="submit" class="btn-submit" id="submit-btn">
+                            <span>發送匿名信件</span> 🚀
+                        </button>
+                    </form>
+
+                    <!-- Submission Success Modal/Result inside Panel -->
+                    <div id="submit-success-card" style="display: none; text-align: center; padding: 1.5rem 0;" class="fadeIn">
+                        <div style="font-size: 4rem; color: var(--success); margin-bottom: 1rem;">🎉</div>
+                        <h3 style="font-size: 1.6rem; margin-bottom: 0.5rem;">投遞成功！</h3>
+                        
+                        <div id="success-private-msg">
+                            <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 1.5rem;">
+                                您的信件已放入匿名信箱。請務必**妥善保存下方 6 位數提取碼**，日後可憑此提取碼查詢社團管理員的回覆。
+                            </p>
+                        </div>
+
+                        <div id="success-public-msg" style="display: none;">
+                            <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 1rem;">
+                                您的信件已成功發布至 **「公開信件板」**，所有人均可點閱。
+                            </p>
+                            <p style="color: #a78bfa; max-width: 500px; margin: 0 auto 1.5rem; font-size: 0.95rem; font-weight: 500;">
+                                💡 提示：雖然是公開投稿，您依然可以複製並保存下方的 **6 位數提取碼**。日後在「查詢回覆」分頁輸入它，即可單獨向幹部進行後續的補充說明或對話！
+                            </p>
+                        </div>
+
+                        <div class="code-box" style="max-width: 320px; margin: 1.5rem auto;">
+                            <span class="code-text" id="generated-code">123456</span>
+                            <button class="btn-copy" id="btn-copy-code" onclick="copyCode()">複製</button>
+                        </div>
+                        
+                        <button class="btn-submit" style="width: auto; padding: 0.8rem 2rem; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--panel-border); margin-top: 1rem;" onclick="resetSubmitForm()">
+                            繼續投遞新信件
+                        </button>
+                    </div>
+                </div>
+
+                <!-- TAB 2: QUERY STATUS & REPLIES -->
+                <div id="tab-query" class="glass-panel" style="display: none;">
+                    <h2 style="font-size: 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="color: var(--secondary);">🔍</span> 查詢回覆狀態
+                    </h2>
+
+                    <div class="form-group" style="display: flex; gap: 1rem;">
+                        <input type="text" id="query-code-input" class="form-control" placeholder="請輸入 6 位數提取碼（例如：123456）" style="flex: 1;" required maxlength="6" pattern="\d{6}">
+                        <button type="button" class="btn-submit" style="width: auto; padding: 0 2rem;" onclick="handleLetterQuery()">
+                            查詢
+                        </button>
+                    </div>
+
+                    <!-- Query Results -->
+                    <div id="query-result" style="display: none;">
+                        <div class="letter-result-card">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--panel-border); padding-bottom: 0.8rem;">
+                                <h3 style="font-size: 1.2rem; color: var(--primary);">📬 您的信件</h3>
+                                <span style="font-size: 0.85rem; color: var(--text-muted);">
+                                     投遞時間：<span id="result-date">2026/06/27 12:00:00</span>
+                                </span>
+                            </div>
+                            
+                            <div id="result-content" style="white-space: pre-wrap; background: rgba(15, 23, 42, 0.4); padding: 1.2rem; border-radius: 12px; margin-bottom: 1.5rem;">
+                                信件內容
+                            </div>
+
+                            <h4 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--primary); display: flex; align-items: center; gap: 0.5rem;">
+                                <span>💬</span> 管理員回覆
+                            </h4>
+                            
+                            <div id="replies-container" class="replies-timeline">
+                                <!-- Replies will be rendered here dynamically -->
+                            </div>
+
+                            <!-- Sender Reply Compose Box -->
+                            <div style="margin-top: 2rem; border-top: 1px solid var(--panel-border); padding-top: 1.5rem;">
+                                <h4 style="font-size: 1.1rem; margin-bottom: 0.75rem; color: var(--secondary);">✍ 繼續補充 / 回覆幹部</h4>
+                                <form id="sender-reply-form" onsubmit="submitSenderReply(event)">
+                                    <div class="form-group">
+                                        <textarea id="sender-reply-content" class="form-control" placeholder="輸入要補充的內容或回覆幹部..." style="min-height: 80px;" required></textarea>
+                                    </div>
+                                    <button type="submit" class="btn-submit" style="width: auto; padding: 0.6rem 1.5rem; font-size: 0.95rem; float: right; margin-bottom: 1rem;">
+                                        送出回覆 📤
+                                    </button>
+                                </form>
+                                <div style="clear: both;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Not Found or Error Alert inside Panel -->
+                    <div id="query-error" style="display: none; background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); padding: 1rem 1.5rem; border-radius: 12px; color: var(--danger); margin-top: 1.5rem;">
+                        找不到該提取碼對應的信件，請再次確認是否輸入正確的 6 位數數字。
+                    </div>
+                </div>
+
+                <!-- TAB 3: PUBLIC BOARD -->
+                <div id="tab-public" class="glass-panel" style="display: none;">
+                    <h2 style="font-size: 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="color: var(--primary);">📢</span> 公開信件板
+                    </h2>
+                    
+                    <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
+                        這裡展示所有公開投稿的信件，以及社團幹部們的公開回覆。
+                    </p>
+
+                    <div id="public-board-container" style="display: flex; flex-direction: column; gap: 1.5rem;">
+                        <div style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                            載入中...
+                        </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Not Found or Error Alert inside Panel -->
-            <div id="query-error" style="display: none; background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.2); padding: 1rem 1.5rem; border-radius: 12px; color: var(--danger); margin-top: 1.5rem;">
-                找不到該提取碼對應的信件，請再次確認是否輸入正確的 6 位數數字。
-            </div>
-        </div>
 
-        <!-- TAB 3: PUBLIC BOARD -->
-        <div id="tab-public" class="glass-panel" style="display: none;">
-            <h2 style="font-size: 1.5rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                <span style="color: var(--primary);">📢</span> 公開信件板
-            </h2>
-            
-            <p style="color: var(--text-muted); margin-bottom: 1.5rem; font-size: 0.95rem;">
-                這裡展示所有公開投稿的信件，以及社團幹部們的公開回覆。
-            </p>
-
-            <div id="public-board-container" style="display: flex; flex-direction: column; gap: 1.5rem;">
-                <div style="text-align: center; color: var(--text-muted); padding: 2rem;">
-                    載入中...
+            <!-- Right Column: Club Profile Card -->
+            <div class="info-column" style="flex: 1; min-width: 300px; position: sticky; top: 100px;">
+                <div class="glass-panel" style="border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(30, 41, 59, 0.45); border-radius: 24px; padding: 2.2rem; box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);">
+                    <div style="text-align: center; margin-bottom: 1.5rem;">
+                        <div style="font-size: 3rem; margin-bottom: 0.5rem; filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.4));">🥋</div>
+                        <h2 style="font-size: 1.45rem; font-weight: 700; color: #fff; margin-bottom: 0.25rem; background: linear-gradient(135deg, #fff 30%, #a78bfa 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">東華跆拳體閒運動社</h2>
+                        <p style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">NDHU TKD & Leisure Sports Club</p>
+                    </div>
+                    
+                    <hr style="border: 0; border-top: 1px solid rgba(255, 255, 255, 0.06); margin: 1.5rem 0;" />
+                    
+                    <div style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        <div>
+                            <div style="font-size: 0.8rem; color: #a78bfa; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem; letter-spacing: 0.5px;">⏰ 社課時間</div>
+                            <div style="color: #f1f5f9; font-size: 1rem; font-weight: 500;">每週二、四 20:00 - 22:00</div>
+                        </div>
+                        
+                        <div>
+                            <div style="font-size: 0.8rem; color: #38bdf8; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem; letter-spacing: 0.5px;">📍 練習地點</div>
+                            <div style="color: #f1f5f9; font-size: 1rem; font-weight: 500;">體育館 跆拳道教室</div>
+                        </div>
+                        
+                        <div>
+                            <div style="font-size: 0.8rem; color: #34d399; font-weight: 600; text-transform: uppercase; margin-bottom: 0.25rem; letter-spacing: 0.5px;">💬 社團簡介</div>
+                            <div style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.55;">
+                                不論你是跆拳道高手，還是從未接觸過的新手，都歡迎來體驗揮灑汗水與學習踢擊防身技巧的樂趣！我們有專業的指導與充滿活力的夥伴，等你一起來玩！
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr style="border: 0; border-top: 1px solid rgba(255, 255, 255, 0.06); margin: 1.5rem 0;" />
+                    
+                    <a href="https://www.instagram.com/ndhu_tkd_fun?utm_source=ig_web_button_share_sheet&igsh=ZDNlZDc0MzIxNw==" target="_blank" class="btn-submit" style="display: flex; align-items: center; justify-content: center; gap: 0.6rem; background: linear-gradient(135deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); border: none; text-decoration: none; font-size: 1rem; font-weight: 600; padding: 0.8rem; border-radius: 12px; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 4px 15px rgba(220, 39, 67, 0.3); color: #fff;">
+                        <svg style="width: 18px; height: 18px; fill: white;" viewBox="0 0 24 24">
+                            <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.051c-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/>
+                        </svg>
+                        追蹤我們的 IG !
+                    </a>
                 </div>
             </div>
         </div>
